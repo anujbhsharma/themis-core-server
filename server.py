@@ -1,37 +1,103 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import google.generativeai as genai
+import pickle
+import pandas as pd
+import requests
+from sklearn.metrics.pairwise import cosine_similarity
+import re
+import nltk
+from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+from nltk.stem import PorterStemmer
+import ssl
+tfidf_vectorizer = pickle.load(open('/Users/anujsharma/Desktop/themisCore/themis-core-server/tfidf_vectorizer.pkl', 'rb'))
+tfidf_matrix = pickle.load(open('/Users/anujsharma/Desktop/themisCore/themis-core-server/tfidf_matrix.pkl','rb'))
+law_list = pickle.load(open('/Users/anujsharma/Desktop/themisCore/themis-core-server/law_dict.pkl','rb'))
+df = pd.DataFrame(law_list)
+
+# Initialize NLTK
+nltk.download('punkt')
+nltk.download('stopwords')
+
+# Initialize Porter Stemmer
+porter_stemmer = PorterStemmer()
 app = Flask(__name__)
 CORS(app)
 
 @app.route('/api/get_data', methods=['POST'])
-
 def get_data():
-    try:
-        data = request.get_json()
-        keywords = data.get('keywords')
-        year = data.get('year')
-        court = data.get('court')
+	# try:
+		data = request.json
+		data = request.get_json()
+		keywords = data.get('keywords')
+		year = (int)(data.get('year'))
+		dataset_name = data.get('court')
+#   keywords = data.get('keywords')
+#         year = data.get('year')
+#         court = data.get('court')
+		if dataset_name == "ALL" or dataset_name == "":
+			print("All")
+			dataset_name = None
+			print(dataset_name)
+			print(year)
+		
+		if year is not None and dataset_name is not None:
+			filtered_df = df[(df['year'] == year) & (df['dataset'] == dataset_name)]
+		elif year is not None:
+			filtered_df = df[df['year'] == year]
+		elif dataset_name is not None:
+			filtered_df = df[df['dataset'] == dataset_name]
+		else:
+			filtered_df = df.copy()  # No filtering if year and dataset_name are None
 
-        if not keywords or not year or not court:
-            return jsonify({'error': 'All parameters are required.'}), 400
+		if filtered_df.empty:
+			return [], []  # Return empty lists if filtered dataframe is empty
 
-        # Here you can perform any processing or logic with the received data
-        # For demonstration, we will just return them as a JSON response
-        dummy_response = [
-        {"name": "James vs Doe", "text": "R. v. Magoon\nCollection\nSupreme Court Judgments\nDate\n2018-04-13\nNeutral citation\n2018 SCC 14\nReport\n[2018] 1 SCR 309\nCase number\n37416, 37479\nJudges\nMcLachlin, Beverley; Abella, Rosalie Silberman; Moldaver, Michael J.; Karakatsanis, Andromache; Wagner, Richard; Gascon, Cl\u00e9ment; C\u00f4t\u00e9, Suzanne; Brown, Russell; Rowe, Malcolm\nOn appeal from\nAlberta\nNotes\nCase in Brief SCC Case Information: 37416, 37479\nDecision Content\nSUPREME COURT OF CANADA\nCitation: R. v. Magoon, 2018 SCC 14, [2018] 1 S.C.R. 309\nAppeals Heard and Judgments Rendered: November 27, 2017 Reasons delivered: April 13, 2018 Dockets: 37416, 37479\nBetween:\nMarie-Eve Magoon\nAppellant\nand\nHer Majesty The Queen\nRespondent\nAnd between:\nSpencer Lee Jordan\nAppellant\nand\nHer Majesty The Queen\nRespondent\nCoram: McLachlin C.J. and Abella, Moldaver, Karakatsanis, Wagner, Gascon, C\u00f4t\u00e9, Brown and Rowe JJ.\nJoint Reasons For Judgment: (paras. 1 to 76)\nAbella and Moldaver JJ. (McLachlin C.J. and Karakatsanis, Wagner, Gascon, C\u00f4t\u00e9, Brown and Rowe JJ. concurring)\nR. v. Magoon, 2018 SCC 14, [2018] 1 S.C.R. 309\nMarie\u2011Eve Magoon Appellant\nv.\nHer Majesty The Queen Respondent\n\u2011 and \u2011\nSpencer Lee Jordan Appellant\nv.\nHer Majesty The Queen Respondent\nIndexed as: R. v. Magoon\n2018 SCC 14\nFile Nos.: 37416, 37479.\nHearing and judgments: November 27, 2017.\nReasons delivered: April 13, 2018.\nPresent: McLachlin C.J. and Abella, Moldaver, Karakatsanis, Wagner, Gascon, C\u00f4t\u00e9, Brown and Rowe JJ.\non appeal from the court of appeal for alberta\nCriminal law \u2014 First degree murder \u2014 Unlawful confinement \u2014 Elements of offence \u2014 Father and stepmother convicted at trial of second degree murder in beating death of six\u2011year\u2011old child \u2014 Court of Appeal holding that death caused while child unlawfully confined and substituting first degree murder convictions \u2014 Whether child unlawfully confined \u2014 Whether unlawful confinement and murder part of same transaction \u2014 Criminal Code, R.S.C. 1985, c. C\u201146, ss. 231(5) , 279(2) .\nCriminal law \u2014 Appeals \u2014 Appeals to Supreme Court of Canada \u2014 Appeal as of right \u2014 Accused charged with first degree murder but convicted at trial of second degree murder \u2014 Accused appealing second degree murder convictions and Crown appealing first degree murder acquittals \u2014 Court of Appeal dismissing appeals by accused but allowing Crown appeals and substituting first degree murder convictions \u2014 Accused appealing as of right to Supreme Court of Canada from substituted verdicts \u2014 Whether accused can raise grounds of appeal relating to second degree murder convictions \u2014 Meaning of \u201cany question of law\u201d \u2014 Criminal Code, R.S.C. 1985, c. C\u201146, s. 691(2) (b).\nCriminal law \u2014 Appeals \u2014 Appeals to Court of Appeal \u2014 Jurisdiction \u2014 Accused charged with first degree murder but convicted at trial of second degree murder \u2014 Crown appealing first degree murder acquittals to Court of Appeal \u2014 Whether Court of Appeal had jurisdiction to hear Crown appeals \u2014 Criminal Code, R.S.C. 1985, c. C\u201146, s. 676 .\nM, who was six years old, died after spending a weekend at the home of her father and stepmother, the two accused. During that period, M was burned, forced for hours to run up and down the stairs as a form of punishment, and severely beaten. She suffered damage to her internal organs, and a subdural hematoma and cerebral swelling caused by at least five serious blows to the head. The accused did not seek medical attention for M until she was in complete cardiac and respiratory failure. She did not survive.\nThe accused were charged with first degree murder and convicted of second degree murder at trial. They appealed from their second degree murder convictions and the Crown appealed from their first degree murder acquittals. The Court of Appeal dismissed the accused\u2019s appeals, but allowed the Crown appeals. It held that the accused unlawfully confined M in circumstances that rendered them liable for first degree murder under s. 231(5) of the Criminal Code . It therefore set aside the acquittals for first degree murder and substituted verdicts of guilty.\nThe accused appealed to this Court as of right, under s. 691(2) (b) of the Criminal Code . The Crown moved to strike portions of the accused\u2019s notices of appeal, on the basis that the accused did not have an appeal as of right regarding the grounds of appeal that called into question their convictions for second degree murder. The accused then filed applications for leave to appeal under s. 691(1) (b) with respect to the grounds that the Crown sought to strike. At the hearing of the appeals, the Crown\u2019s motions to strike were allowed, the accused\u2019s applications for leave to appeal were dismissed, and the accused\u2019s appeals were dismissed, with reasons to follow.\nHeld: The appeals should be dismissed.\nThe accused did have an appeal as of right to this Court under s. 691(2) (b) of the Criminal Code on any question of law relating to the reversal of their first degree murder acquittals, but required leave to appeal under s. 691(1) (b) in order to raise grounds of appeal relating to their second degree murder convictions. The meaning of \u201cany question of law\u201d in s. 691(2) (b) is restricted to questions of law relating to the substituted verdicts of guilty for first degree murder. Sections 691(1) and 691(2) must be read and interpreted harmoniously: s. 691(1) applies where a conviction has been affirmed by the court of appeal, and s. 691(2) applies where an acquittal has been set aside by the court of appeal. Each provision confers different rights on an appellant, depending on the circumstances, and these parallel routes of appeal must be kept separate and distinct.\nThe Court of Appeal had jurisdiction to hear the Crown appeals from the first degree murder acquittals in the present case. For appeal purposes, first degree murder and second degree murder are treated as two distinct offences. Where an accused is charged with first degree murder but convicted of second degree murder, he or she has been acquitted of first degree murder. In such a case, the accused may appeal the conviction for second degree murder, and the Crown may appeal the acquittal of first degree murder under s. 676(1) (a) of the Criminal Code .\nThe Court of Appeal did not err in finding the accused guilty of first degree murder. The five elements of the applicable test set out in R. v. Harbottle, [1993] 3 S.C.R. 306, which are required for an accused to be convicted of first degree murder under s. 231(5) of the Criminal Code , were met in this case, including the first and fifth elements.\nWith respect to the first element, unlawful confinement under s. 279(2) of the Criminal Code was established: the accused confined M, and the confinement was unlawful. M was coercively restrained and directed contrary to her wishes, and the acts of discipline far exceeded any acceptable form of parenting. The legal standard for proving unlawful confinement is the same for children as for adults, but in the case of a parent\u2011child relationship, courts must keep in mind that children are inherently vulnerable and dependent, and routinely receive \u2014 and expect \u2014 directions from their parents. The Crown does not have to prove some special or extreme form of confinement in cases involving parents and their children. A finding of confinement does not require evidence of a child being physically bound or locked up; it cannable doubt that: (1) the accused was guilty of the underlying crime of domination or of attempting to commit that crime; (2) the accused was guilty of the murder of the victim; (3) the accused participated in the murder in such a manner that he was a substantial cause of the death of the victim; (4) there was no intervening act of another which resulted in the accused no longer being substantially connected to the death of the victim; and (5) the crimes of domination and murder were part of the same transaction (p. 325).\n[18] The trial judge concluded that the Crown had proven elements two, three, and four. Her inquiry therefore focused on elements one and five: Did Ms. Magoon and Mr. Jordan unlawfully confine Meika, and, if so, were the unlawful confinement and murder part of the same transaction?\n[19] The trial judge rejected the Crown\u2019s submission that withholding Meika from her biological mother under false pretences and contrary to the existing custody order constituted unlawful confinement. The trial judge also rejected the Crown\u2019s submission that Ms. Magoon and Mr. Jordan lost lawfppeal is granted by the Supreme Court of Canada.\n[32] A plain reading, as well as a contextual and purposive approach to interpreting these provisions, leads to the conclusion that Ms. Magoon and Mr. Jordan required leave under s. 691(1) (b) of the Criminal Code in order to raise grounds of appeal relating to their second degree murder convictions. This interpretation is also consistent with this Court\u2019s jurisprudence.\n[33] Sections 691(1) and 691(2) of the Criminal Code set out the routes of appeal to the Supreme Court of Canada available to an accused. Section 691(1) applies where a conviction has been affirmed by the court of appeal; s. 691(2) applies where an acquittal has been set aside by the court of appeal. In this case, both sections apply.\n[34] There were four separate and distinct appeals heard by the Court of Appeal of Alberta. The first two appeals, by Ms. Magoon and Mr. Jordan, related to their second degree murder convictions. The Court of Appeal of Alberta unanimously dismissed those appeals, thus affirming the convictions. As such, with respect to the questions of law raised in those appeals, s. 691(1) (b) provides the only appeal route to this Court. The second two appeals, by the Crown, related to Ms. Magoon\u2019s and Mr. Jordan\u2019s first degree murder acquittals. The Court of Appeal of Alberta allowed the Crown appeals, and entered verdicts of guilty for first degree murder. Thus, with respect to the questions of law raised in those appeals, s. 691(2) (b) is the only appeal route to this Court.\n[35] A contextual analysis supports this conclusion. Sections 691(1) and 691(2) of the Criminal Code must be read and interpreted harmoniously. Each provision confers different rights on an appellant, depending on the circumstances. These parallel routes of appeal must be kept separate and distinct. An appellant cannot challenge a decision of a court by appealing a different decision. That would be the illogical result if we were to give effect to the interpretation sought by Ms. Magoon and Mr. Jordan.\n[36] Ms. Magoon and Mr. Jordan cannot challenge the Court of Appeal\u2019s decisions relating to their second degree murder convictions under the guise of s. 691(2) (b) (a route available only for appealing the first degree murder acquittals), just as they cannot challenge the Court of Appeal\u2019s decisions relating to the first degree murder acquittals under s. 691(1) (b) (a route available only for appealing the second degree murder convictions). Ms. Magoon and Mr. Jordan must appeal from these separate decisions under the appropriate sections of the Criminal Code .\n[37] And Ms. Magoon and Mr. Jordan suffer no unfairness by interpreting \u201cany question of law\u201d in s. 691(2) (b) as meaning any question of law relating to the substituted verdict of guilty. Such an interpretation does not preclude Ms. Magoon or Mr. Jordan from raising issues relating to their second degree murder convictions, as this option is still available under s. 691(1) (b). Sections 691(1) and 691(2) simply provide different routes of appeal to the appellants \u2014 one requires leave; the other does not.\n[38] This analysis is also consistent with the purpose of these provisions. The purpose of s. 691(2) (b) of the Criminal Code is to allow an appellant to raise any question of law arising from a conviction entered by the court of appeal. The right given to an appellant under s. 691(2) (b) is equivalent to the right to appeal to the court of appeal which is given to an appellant who has been convicted at trial: under s. 675(1) (a)(i) of the Criminal Code , an accused who is convicted at trial may appeal to the court of appeal, as of right, on any question of law arising from that conviction. The same automatic right to appeal a conviction entered by a court to the next level of court applies to an accused who is acquitted at trial, and subsequently convicted at the court of appeal. The appellant may appeal, as of right, to the Supreme Court of Canada on any question of law arising from the substituted verdict of guilty.\n[39] In our view, it would be contrary to Parliament\u2019s intent to allow an appellant to re-litigate before this Court, without leave, any and all issues the court of appeal had unanimously decided against the appellant in upholding the trial decision. This is especially so where, in cases like this one, the acquittals at trial were not outright acquittals, but rather, acquittals for first degree murder coupled with convictions for second degree murder.[1] But that is the consequence of too broad an interpretation of \u201cany question of law\u201d in s. 691(2) (b). This cannot have been what Parliament intended when it enacted two separate routes of appeal for accused persons under ss. 691(1) and 691(2) of the Criminal Code .\n[40] This Court\u2019s jurisprudence supports the same conclusion. In Guillemette v. The Queen, [1986] 1 S.C.R. 356, Lamer J. held that although an accused has an appeal as of right where the court of appeal sets aside an acquittal for second degree murder, an accused can only raise issues relating to that substituted conviction. The accused cannot seek an acquittal on an underlying conviction on the lesser and included offence of manslaughter without obtaining leave. In R. v. Keegstra, [1995] 2 S.C.R. 381, Lamer C.J. did not depart from the position he took in Guillemette.[2]\n[41] In sum, under s. 691(2) (b) of the Criminal Code , an appellant has an appeal to the Supreme Court of Canada, as of right, on any question of law relating to the offence for which he or she was acquitted at trial, and for which the court of appeal has entered a verdict of guilty. In contrast, under s. 691(1) (b), an appellant may appeal to the Supreme Court of Canada, with leave, on any question of law relating to the offence for which he or she was convicted at trial, where the court of appeal has affirmed the conviction. Accordingly, Ms. Magoon and Mr. Jordan have an appeal as of right on any question of law relating to the reversal of their first degree murder acquittals, and they may appeal with leave any other issues of law relating to their second degree murder convictions.\n[42] For these reasons, this Court allowed the Crown\u2019s motions to strike.\n[43] After concluding that Ms. Magoon and Mr. Jordan required leave to appeal from their second degree murder convictions, this Court then proceeded to deny them leave ([2017] 2 S.C.R. viii and [2017] 2 S.C.R. vii).\nThe Court of Appeal\u2019s Jurisdiction to Hear the Crown Appeals From Ms. Magoon\u2019s and Mr. Jordan\u2019s First Degree Murder Acquittals\n[44] We turn now to the argument that the Court of Appeal of Alberta lacked jurisdiction to hear the Crown appeals from the first degree murder acquittals. Ms. Magoon submits that first degree murder and second degree murder are not two distinct offences; rather, they are simply sentencing designations for the underlying offence of \u201cmurder\u201d. Because Ms. Magoon and Mr. Jordan were charged with murder and convicted of murder, it would then follow that there were no true verdicts of acquittal in this case.\n[45] In support of that position, Ms. Magoon relies on the following decisions by this Court: R. v. Farrant, [1983] 1 S.C.R. 124; Droste v. The Queen, [1984] 1 S.C.R. 208; R. v. Par\u00e9, [1987] 2 S.C.R. 618; R. v. Arkell, [1990] 2 S.C.R. 695; Harbottle; and R. v. Nette, 2001 SCC 78, [2001] 3 S.C.R. 488. Although this Court did indicate in those cases that first degree murder and second degree murder were sentencing designations for the single substantive offence of \u201cmurder\u201d (see Farrant, at pp. 140-41; Droste, at pp. 218-19 and 221-22; Par\u00e9, at pp. 624-25; Arkell, at pp. 702-3; Harbottle, at p. 323; and Nettection 231(5) of the Criminal Code states, in part:\nHijacking, sexual assault or kidnapping\n(5) Irrespective of whether a murder is planned and deliberate on the part of any person, murder is first degree murder in respect of a person when the death is caused by that person while committing or attempting to commit an offence under one of the following sections:\n. . .\n(e) section 279 (kidnapping and forcible confinement); or\n. . .\nUnder s. 231(5), second degree murder becomes first degree murder where the accused commits the murder in conjunction with one his authority is not without limit (see Bottineau (S.C.J.), at para. 489; Bottineau (C.A.), at para. 101). If a parent engages in abusive or harmful conduct toward his or her child that surpasses any acceptable form of parenting, whether or not physical violence is inflicted, the lawfulness of his or her authority to confine the child ceases. In those circumstances, the lawful authority is transformed into unlawful authority because it represents the exploitation of authority for an improper purpose. This case does not fall within s. 43 of the Criminal Code whereby a parent \u201cis justified in using force by way of correction toward a . . . child . . . who is under his care, if the force does not exceed what is reasonable under the circumstances\u201d (see Canadian er, that under s. 745.4 of the Criminal Code , where an accused is convicted of second degree murder, a trial judge may increase the period of parole ineligibility to up to 25 years.\n", "url": "https://example.com/1"},
-        {"name": "Ian vs Fred", "text": "Text 2", "url": "https://example.com/2"},
-        {"name": "Irving vs New Brunswick", "text": "Text 3", "url": "https://example.com/3"},
-        {"name": "UNB vs Anuj", "text": "Text 4", "url": "https://example.com/4"},
-        {"name": "Ahmed vs IRCC", "text": "Text 5", "url": "https://example.com/5"}
-    ]
-    
-        return jsonify(dummy_response)
+	# Split query into individual keywords
+		keywords = keywords.split(',')
+	# Preprocess and tokenize each keyword
+		preprocessed_keywords = [preprocess_text(keyword) for keyword in keywords]
+	# Vectorize query
+		query_vector = tfidf_vectorizer.transform(preprocessed_keywords)
 
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+	# Get indices of filtered documents in tfidf_matrix
+		filtered_indices = filtered_df.index
+	# Calculate cosine similarity between query vector and filtered document vectors
+		cosine_similarities = cosine_similarity(query_vector, tfidf_matrix[filtered_indices])
+		# Sum similarity scores across all keywords for each document
+		combined_scores = cosine_similarities.sum(axis=0)
+		# Get indices of top n similar documents
+		top_indices = combined_scores.argsort()[-5:][::-1]
+
+		response = []
+		for index in top_indices:
+			case_name = filtered_df.loc[filtered_indices[index], "name"]
+			case_year = int(filtered_df.loc[filtered_indices[index], "year"])
+			case_url = filtered_df.loc[filtered_indices[index], "source_url"]
+			case_text = filtered_df.loc[filtered_indices[index], "unofficial_text"]
+			response.append({"name": case_name, "year": case_year, "url": case_url, "text":case_text})
+		return response
+
+	# except Exception as e:
+		
+	#  	return jsonify({'error': str(e)}), 500
+
+def preprocess_text(text):
+	text = text.lower()
+	# Remove non-alphanumeric characters
+	text = re.sub(r'[^a-zA-Z0-9\s]', '', text)
+	# Tokenize text
+	tokens = word_tokenize(text)
+	# Remove stopwords
+	stop_words = set(stopwords.words('english'))
+	tokens = [word for word in tokens if word not in stop_words]
+	# Apply stemming
+	tokens = [porter_stemmer.stem(word) for word in tokens]
+	# Join tokens back into a string
+	preprocessed_text = ' '.join(tokens)
+	return preprocessed_text
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8080)
-    
-    
+	app.run(debug=True, port=8080)
+	
+	
